@@ -22,9 +22,9 @@ docker run --env-file .env -p 7273:7273 mist
 
 TypeScript rewrite of the v1 API from meat-my-beat-i (Python/FastAPI). Serves as the public developer API for the refx osu! private server.
 
-- **Framework**: Fastify
+- **Framework**: Fastify 4 + `@fastify/cors` v8 (must be v8, not v9+, for Fastify 4 compatibility)
 - **Database**: MySQL via mysql2/promise (connection pool)
-- **Cache/Leaderboards**: Redis via ioredis
+- **Cache**: Redis via ioredis (used for rank lookups in `get_player_info`)
 - **Entry**: `src/index.ts` registers the v1 router at `/v1`
 
 ### Layout
@@ -38,9 +38,9 @@ TypeScript rewrite of the v1 API from meat-my-beat-i (Python/FastAPI). Serves as
 
 ### Key Details
 
-- `get_player_count` and `get_player_status` are NOT in this service (handled by meat-my-beat-i which has in-memory player sessions)
-- Redis leaderboard keys: `bancho:leaderboard:{mode}` and `bancho:leaderboard:{mode}:{country}`
-- Mode 7 (rx!mania) maps to redis key 8 for rank lookups
-- Scores join with `lazer_scores` table to get `mods_json` when available
-- Mods can be parsed as integer or string (e.g. "HDDT"), with `=` prefix for strong equality and `~` for weak
-- Reference implementation lives in `reference/meat-my-beat-i/` for comparison
+- Redis leaderboard keys: `bancho:leaderboard:{mode}` and `bancho:leaderboard:{mode}:{country}`. Mode 7 (rx!mania) maps to redis key 8 for rank lookups in `get_player_info`.
+- Scores join with `lazer_scores` table to get `mods_json`. When `mods_json` is present, omit `mods` integer and `mods_readable`; when absent, set `mods_json: null` and include `mods_readable`.
+- Mods can be parsed as integer or string (e.g. "HDDT"), with `=` prefix for strong equality and `~` for weak.
+- **`LIMIT ?` as a prepared statement parameter fails with mysql2** (`ER_WRONG_ARGUMENTS`). Always interpolate bounds-checked limit/offset values directly into the SQL string (e.g. `LIMIT ${limit}`).
+- Float fields (`acc`, `pp`, `xp_gained`) must be rounded to match Python's orjson output: `r2()` for 2dp, `r3()` for 3dp. These helpers are defined at the top of `v1.ts`.
+- `play_time` and datetime fields should be formatted as `YYYY-MM-DDTHH:MM:SS` (no timezone suffix) using `fmtDatetime()` in `v1.ts`.
