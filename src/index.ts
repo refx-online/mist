@@ -15,3 +15,11 @@ app.listen({ host, port }, (err) => {
     process.exit(1);
   }
 });
+
+const shutdown = async () => {
+  await app.close();
+  process.exit(0);
+};
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
