@@ -1,9 +1,11 @@
 import "dotenv/config";
 import Fastify from "fastify";
+import cors from "@fastify/cors";
 import { v1Router } from "./routes/v1";
 
 const app = Fastify({ logger: true });
 
+app.register(cors, { origin: true });
 app.register(v1Router, { prefix: "/v1" });
 
 const host = process.env.APP_HOST ?? "0.0.0.0";

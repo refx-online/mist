@@ -33,8 +33,8 @@ export async function fetchPPHistory(
      FROM user_profile_history
      WHERE user_id = ? AND mode = ?
      ORDER BY captured_at DESC
-     LIMIT ?`,
-    [userId, mode, limit]
+     LIMIT ${limit}`,
+    [userId, mode]
   );
 }
 
@@ -60,8 +60,8 @@ export async function fetchRankHistory(
      FROM user_profile_history
      WHERE user_id = ? AND mode = ?
      ORDER BY captured_at DESC
-     LIMIT ?`,
-    [userId, mode, limit]
+     LIMIT ${limit}`,
+    [userId, mode]
   );
 }
 

@@ -72,7 +72,7 @@ function statAsDict(s: Record<string, unknown>): Record<string, unknown> {
     pp: s.pp,
     plays: s.plays,
     playtime: s.playtime,
-    acc: s.acc,
+    acc: r3(s.acc),
     max_combo: s.max_combo,
     total_hits: s.total_hits,
     replay_views: s.replay_views,
@@ -83,6 +83,20 @@ function statAsDict(s: Record<string, unknown>): Record<string, unknown> {
     a_count: s.a_count,
     xp: s.xp,
   };
+}
+
+function r2(v: unknown): number {
+  return Math.round(Number(v) * 100) / 100;
+}
+
+function r3(v: unknown): number {
+  return Math.round(Number(v) * 1000) / 1000;
+}
+
+function fmtDatetime(v: unknown): string | null {
+  if (!v) return null;
+  const d = v instanceof Date ? v : new Date(v as string);
+  return d.toISOString().replace("T", "T").slice(0, 19);
 }
 
 export async function v1Router(app: FastifyInstance) {
@@ -115,10 +129,10 @@ export async function v1Router(app: FastifyInstance) {
 
     return reply.send({
       status: "success",
-      results: rows.map((u) => ({
+      results: rows.length,
+      result: rows.map((u) => ({
         id: u.id,
         name: u.name,
-        country: u.country,
       })),
     });
   });
@@ -143,15 +157,18 @@ export async function v1Router(app: FastifyInstance) {
     const requestedScope = scope ?? "all";
     const result: Record<string, unknown> = { status: "success" };
 
+    const playerData: Record<string, unknown> = {};
+
     if (requestedScope === "info" || requestedScope === "all") {
-      result.player = userAsDict(user);
+      playerData.info = userAsDict(user);
     }
 
     if (requestedScope === "stats" || requestedScope === "all") {
       const stats = await fetchStatsByPlayer(user.id);
       const redis = getRedis();
 
-      const statsWithRank = await Promise.all(
+      const statsDict: Record<string, unknown> = {};
+      await Promise.all(
         stats.map(async (s) => {
           const globalRank = await redis.zrevrank(
             `bancho:leaderboard:${s.mode}`,
@@ -162,7 +179,7 @@ export async function v1Router(app: FastifyInstance) {
             String(user!.id)
           );
 
-          return {
+          statsDict[String(s.mode)] = {
             ...statAsDict(s as unknown as Record<string, unknown>),
             rank: globalRank !== null ? globalRank + 1 : 0,
             country_rank: countryRank !== null ? countryRank + 1 : 0,
@@ -170,9 +187,10 @@ export async function v1Router(app: FastifyInstance) {
         })
       );
 
-      result.stats = statsWithRank;
+      playerData.stats = statsDict;
     }
 
+    result.player = playerData;
     return reply.send(result);
   });
 
@@ -260,16 +278,59 @@ export async function v1Router(app: FastifyInstance) {
        LEFT JOIN lazer_scores l ON l.score_id = s.id
        WHERE s.userid = ? AND s.mode = ? AND ${statusClause} ${modsClause}
        ORDER BY ${orderBy}
-       LIMIT ?`,
-      params
+       LIMIT ${limit}`,
+      params.slice(0, -1)
     );
+
+    // fetch clan for player info
+    let clan: { id: number; name: string; tag: string } | null = null;
+    if (user.clan_id) {
+      const clanRow = await fetchClanById(user.clan_id);
+      if (clanRow) clan = { id: clanRow.id, name: clanRow.name, tag: clanRow.tag };
+    }
 
     return reply.send({
       status: "success",
-      scores: scores.map((s) => ({
-        ...s,
-        mods_str: modsToString(Number(s.mods)),
+      scores: await Promise.all(scores.map(async (s) => {
+        const modsJson = s.mods_json ? JSON.parse(s.mods_json as string) : null;
+        const bmap = await fetchBeatmapByMd5(s.map_md5 as string);
+        const result: Record<string, unknown> = {
+          id: s.id,
+          score: s.score,
+          pp: r2(s.pp),
+          acc: r3(s.acc),
+          max_combo: s.max_combo,
+          mods: s.mods,
+          n300: s.n300,
+          n100: s.n100,
+          n50: s.n50,
+          nmiss: s.nmiss,
+          ngeki: s.ngeki,
+          nkatu: s.nkatu,
+          grade: s.grade,
+          status: s.status,
+          mode: s.mode,
+          play_time: fmtDatetime(s.play_time),
+          time_elapsed: s.time_elapsed,
+          perfect: s.perfect,
+          xp_gained: r3(s.xp_gained),
+          pinned: s.pinned,
+          clock_rate: s.clock_rate,
+        };
+        if (modsJson) {
+          result.mods_json = modsJson;
+        } else {
+          result.mods_json = null;
+          result.mods_readable = modsToString(Number(s.mods));
+        }
+        result.beatmap = bmap ? beatmapAsDict(bmap) : null;
+        return result;
       })),
+      player: {
+        id: user.id,
+        name: user.name,
+        clan,
+      },
     });
   });
 
@@ -299,15 +360,15 @@ export async function v1Router(app: FastifyInstance) {
     const limit = Math.min(Math.max(Number(limitStr) || 25, 1), 100);
 
     const rows = await fetchAll<Record<string, unknown>>(
-      `SELECT s.map_md5, COUNT(*) AS plays,
-              m.id AS map_id, m.set_id, m.artist, m.title, m.version, m.creator
+      `SELECT m.md5, m.id, m.set_id, m.status,
+              m.artist, m.title, m.version, m.creator, COUNT(*) AS plays
        FROM scores s
        INNER JOIN maps m ON m.md5 = s.map_md5
        WHERE s.userid = ? AND s.mode = ?
        GROUP BY s.map_md5
        ORDER BY plays DESC
-       LIMIT ?`,
-      [user.id, modeVal, limit]
+       LIMIT ${limit}`,
+      [user.id, modeVal]
     );
 
     return reply.send({ status: "success", maps: rows });
@@ -385,29 +446,39 @@ export async function v1Router(app: FastifyInstance) {
     params.push(limit);
 
     const scores = await fetchAll<Record<string, unknown>>(
-      `SELECT s.id, s.map_md5, s.score, s.pp, s.acc, s.max_combo,
+      `SELECT s.map_md5, s.id, s.score, s.pp, s.acc, s.max_combo,
               s.mods, s.n300, s.n100, s.n50, s.nmiss, s.ngeki, s.nkatu,
               s.grade, s.status, s.mode, s.play_time, s.time_elapsed,
-              s.userid, s.perfect, s.pinned, s.clock_rate,
+              s.userid, s.perfect, s.clock_rate,
               u.name AS player_name, u.country AS player_country,
+              c.id AS clan_id, c.name AS clan_name, c.tag AS clan_tag,
               l.mods_json
        FROM scores s
        INNER JOIN users u ON u.id = s.userid
+       LEFT JOIN clans c ON c.id = u.clan_id
        LEFT JOIN lazer_scores l ON l.score_id = s.id
        WHERE s.map_md5 = ? AND s.mode = ? AND s.status = 2
              AND u.priv & ${Privileges.UNRESTRICTED} != 0
              ${modsClause}
        ORDER BY ${orderBy}
-       LIMIT ?`,
-      params
+       LIMIT ${limit}`,
+      params.slice(0, -1)
     );
 
     return reply.send({
       status: "success",
-      scores: scores.map((s) => ({
-        ...s,
-        mods_str: modsToString(Number(s.mods)),
-      })),
+      scores: scores.map((s) => {
+        const modsJson = s.mods_json ? JSON.parse(s.mods_json as string) : null;
+        const result: Record<string, unknown> = { ...s };
+        delete result.mods_json;
+        if (modsJson) {
+          result.mods_json = modsJson;
+        } else {
+          result.mods_json = null;
+          result.mods_readable = modsToString(Number(s.mods));
+        }
+        return result;
+      }),
     });
   });
 
@@ -424,12 +495,23 @@ export async function v1Router(app: FastifyInstance) {
       return reply.send({ status: "error", message: "Score not found." });
     }
 
+    const lzRow = await fetchOne<{ mods_json: string | null }>(
+      "SELECT mods_json FROM lazer_scores WHERE score_id = ?",
+      [score.id]
+    );
+
+    const modsJson = lzRow?.mods_json ? JSON.parse(lzRow.mods_json) : null;
+    const scoreResult: Record<string, unknown> = { ...score };
+    if (modsJson) {
+      scoreResult.mods_json = modsJson;
+      delete scoreResult.mods;
+    } else {
+      scoreResult.mods_json = null;
+    }
+
     return reply.send({
       status: "success",
-      score: {
-        ...score,
-        mods_str: modsToString(score.mods),
-      },
+      score: scoreResult,
     });
   });
 
@@ -464,11 +546,6 @@ export async function v1Router(app: FastifyInstance) {
     }
   });
 
-  // GET /get_match
-  app.get("/get_match", async (req, reply) => {
-    return reply.send({ status: "error", message: "Match not found." });
-  });
-
   // GET /get_leaderboard
   app.get("/get_leaderboard", async (req, reply) => {
     const query = req.query as {
@@ -489,48 +566,29 @@ export async function v1Router(app: FastifyInstance) {
       return reply.send({ status: "error", message: "Invalid mode." });
     }
 
-    const redis = getRedis();
-    const lbKey = country
-      ? `bancho:leaderboard:${mode}:${country.toLowerCase()}`
-      : `bancho:leaderboard:${mode}`;
+    const rows = await fetchAll<Record<string, unknown>>(
+      `SELECT u.id AS player_id, u.name, u.country, u.latest_activity,
+              s.tscore, s.rscore, s.pp, s.plays, s.playtime, s.acc, s.max_combo, s.xp,
+              s.xh_count, s.x_count, s.sh_count, s.s_count, s.a_count,
+              c.id AS clan_id, c.name AS clan_name, c.tag AS clan_tag
+       FROM stats s
+       LEFT JOIN users u ON u.id = s.id
+       LEFT JOIN clans c ON c.id = u.clan_id
+       WHERE s.mode = ? AND u.priv & ${Privileges.UNRESTRICTED} != 0 AND s.pp > 0
+       ${country ? "AND u.country = ?" : ""}
+       ORDER BY s.${sort} DESC
+       LIMIT ${offset}, ${limit}`,
+      country ? [mode, country] : [mode]
+    );
 
-    const totalPlayers = await redis.zcard(lbKey);
-    const userIds = await redis.zrevrange(lbKey, offset, offset + limit - 1);
+    const leaderboard = rows.map((r) => ({ ...r, acc: r3(r.acc) }));
+    const total = leaderboard.length;
 
-    if (!userIds.length) {
+    if (total === 0) {
       return reply.send({ status: "success", leaderboard: [] });
     }
 
-    const leaderboard = await Promise.all(
-      userIds.map(async (uid, idx) => {
-        const user = await fetchUserById(Number(uid));
-        if (!user) return null;
-
-        const stats = await fetchStatsByPlayer(user.id);
-        const modeStat = stats.find((s) => s.mode === mode);
-
-        const rank = offset + idx + 1;
-
-        return {
-          player: {
-            id: user.id,
-            name: user.name,
-            country: user.country,
-            clan_id: user.clan_id,
-            clan_priv: user.clan_priv,
-          },
-          stats: modeStat
-            ? statAsDict(modeStat as unknown as Record<string, unknown>)
-            : null,
-          rank,
-        };
-      })
-    );
-
-    return reply.send({
-      status: "success",
-      leaderboard: leaderboard.filter(Boolean),
-    });
+    return reply.send({ status: "success", leaderboard });
   });
 
   // GET /get_clan
@@ -548,21 +606,29 @@ export async function v1Router(app: FastifyInstance) {
 
     const members = await fetchUsersByClan(clan.id);
 
+    const clanPrivToRank = (priv: number) =>
+      (["Member", "Officer", "Owner"] as const)[priv - 1] ?? "Member";
+
+    const ownerMember = members.find((m) => m.id === clan.owner);
+
     return reply.send({
-      status: "success",
-      clan: {
-        id: clan.id,
-        name: clan.name,
-        tag: clan.tag,
-        owner: clan.owner,
-        created_at: clan.created_at,
-        members: members.map((m) => ({
-          id: m.id,
-          name: m.name,
-          country: m.country,
-          clan_priv: m.clan_priv,
-        })),
-      },
+      id: clan.id,
+      name: clan.name,
+      tag: clan.tag,
+      members: members.map((m) => ({
+        id: m.id,
+        name: m.name,
+        country: m.country,
+        rank: clanPrivToRank(m.clan_priv),
+      })),
+      owner: ownerMember
+        ? {
+            id: ownerMember.id,
+            name: ownerMember.name,
+            country: ownerMember.country,
+            rank: "Owner",
+          }
+        : { id: clan.owner, rank: "Owner" },
     });
   });
 
@@ -581,27 +647,41 @@ export async function v1Router(app: FastifyInstance) {
 
     const poolMaps = await fetchPoolMaps(pool.id);
 
-    const maps = await Promise.all(
-      poolMaps.map(async (pm) => {
-        const bmap = await fetchBeatmapById(pm.map_id);
-        return {
-          slot: pm.slot,
-          mods: pm.mods,
-          mods_str: modsToString(pm.mods),
-          map: bmap ? beatmapAsDict(bmap) : null,
-        };
-      })
-    );
+    const creatorUser = await fetchUserById(pool.created_by);
+    let createdBy: Record<string, unknown> = { id: pool.created_by };
+    if (creatorUser) {
+      let creatorClan: { id: number; name: string; tag: string; members: number } | null = null;
+      if (creatorUser.clan_id) {
+        const cc = await fetchClanById(creatorUser.clan_id);
+        if (cc) {
+          const ccMembers = await fetchUsersByClan(cc.id);
+          creatorClan = { id: cc.id, name: cc.name, tag: cc.tag, members: ccMembers.length };
+        }
+      }
+      createdBy = {
+        id: creatorUser.id,
+        name: creatorUser.name,
+        country: creatorUser.country,
+        clan: creatorClan,
+        online: false,
+      };
+    }
+
+    const mapsDict: Record<string, unknown> = {};
+    for (const pm of poolMaps) {
+      const bmap = await fetchBeatmapById(pm.map_id);
+      if (bmap) {
+        const key = `${modsToString(pm.mods)}${pm.slot}`;
+        mapsDict[key] = beatmapAsDict(bmap);
+      }
+    }
 
     return reply.send({
-      status: "success",
-      pool: {
-        id: pool.id,
-        name: pool.name,
-        created_at: pool.created_at,
-        created_by: pool.created_by,
-        maps,
-      },
+      id: pool.id,
+      name: pool.name,
+      created_at: pool.created_at,
+      created_by: createdBy,
+      maps: mapsDict,
     });
   });
 
@@ -621,15 +701,15 @@ export async function v1Router(app: FastifyInstance) {
     params.push(limit);
 
     const entries = await fetchAll<Record<string, unknown>>(
-      `SELECT id, type, message, created_at
+      `SELECT user_id, description, category, date
        FROM changelog
        ${typeClause}
-       ORDER BY created_at DESC
-       LIMIT ?`,
-      params
+       ORDER BY date DESC
+       LIMIT ${limit}`,
+      params.slice(0, -1)
     );
 
-    return reply.send({ status: "success", changelog: entries });
+    return reply.send({ status: "success", type: type ? Number(type) : null, changelog: entries });
   });
 
   // GET /get_player_history
@@ -667,20 +747,50 @@ export async function v1Router(app: FastifyInstance) {
       case "pp": {
         const history = await fetchPPHistory(user.id, mode, limit);
         const current = await fetchCurrentPP(user.id, mode);
-        const entries = current ? [current, ...history] : history;
-        return reply.send({ status: "success", history: entries });
+        const reversed = [...history].reverse();
+        if (current) reversed.push({ user_id: user.id, mode, ...current });
+        return reply.send({
+          status: "success",
+          data: {
+            user_id: user.id,
+            mode,
+            captures: reversed.map((c) => ({
+              captured_at: c.captured_at instanceof Date ? c.captured_at.toISOString() : c.captured_at,
+              pp: c.pp,
+            })),
+          },
+        });
       }
       case "rank": {
         const history = await fetchRankHistory(user.id, mode, limit);
         const current = await fetchCurrentRankWithCountry(user.id, mode, user.country);
-        const entries = current
-          ? [{ user_id: user.id, mode, ...current }, ...history]
-          : history;
-        return reply.send({ status: "success", history: entries });
+        const reversed = [...history].reverse();
+        if (current) reversed.push({ user_id: user.id, mode, captured_at: current.captured_at, rank: current.rank, c_rank: current.c_rank });
+        return reply.send({
+          status: "success",
+          data: {
+            user_id: user.id,
+            mode,
+            captures: reversed.map((c) => ({
+              captured_at: c.captured_at instanceof Date ? c.captured_at.toISOString() : c.captured_at,
+              overall: c.rank,
+              country: c.c_rank,
+            })),
+          },
+        });
       }
       case "peak": {
         const peak = await fetchPeakRank(user.id, mode);
-        return reply.send({ status: "success", peak: peak ?? null });
+        if (!peak) return reply.send({ status: "error", message: "Rank Capture not found." });
+        return reply.send({
+          status: "success",
+          data: {
+            user_id: user.id,
+            mode,
+            captured_at: peak.captured_at instanceof Date ? peak.captured_at.toISOString() : peak.captured_at,
+            rank: peak.rank,
+          },
+        });
       }
       default:
         return reply.send({ status: "error", message: "Invalid history type. Use pp, rank, or peak." });
@@ -727,32 +837,24 @@ export async function v1Router(app: FastifyInstance) {
 
     if (!scores.length) {
       return reply.send({
-        status: "success",
+        current_pp: 0,
+        target_pp: targetPP,
         pp_needed: targetPP,
-        message: "No scores found for this mode.",
       });
     }
 
-    // Calculate weighted pp
-    let currentWeightedPP = 0;
-    for (let i = 0; i < scores.length; i++) {
-      currentWeightedPP += scores[i].pp * Math.pow(0.95, i);
-    }
+    const count = scores.length;
+    const weightedPP = scores.reduce((sum, s, i) => sum + s.pp * Math.pow(0.95, i), 0);
+    const bonus = 416.6667 * (1 - Math.pow(0.9994, count));
+    const currentPP = weightedPP + bonus;
 
-    // Calculate what pp a new score would need to reach target
-    // If a new #1 score is set, it shifts everything down by 1
-    let ppAfterShift = 0;
-    for (let i = 0; i < scores.length; i++) {
-      ppAfterShift += scores[i].pp * Math.pow(0.95, i + 1);
-    }
-
-    const ppNeeded = (targetPP - ppAfterShift) / Math.pow(0.95, 0);
+    const bonusNext = 416.6667 * (1 - Math.pow(0.9994, count + 1));
+    const ppNeeded = Math.max(0, targetPP - 0.95 * weightedPP - bonusNext);
 
     return reply.send({
-      status: "success",
-      current_pp: Math.round(currentWeightedPP * 100) / 100,
-      target_pp: targetPP,
-      pp_needed: Math.round(Math.max(0, ppNeeded) * 100) / 100,
+      current_pp: Math.round(currentPP * 100) / 100,
+      target_pp: targetPP >= currentPP ? Math.round(targetPP * 100) / 100 : "already at or above target pp",
+      pp_needed: Math.round(ppNeeded * 100) / 100,
     });
   });
 }
