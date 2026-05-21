@@ -17,7 +17,6 @@ import {
   fetchCurrentPP,
   fetchRankHistory,
   fetchPeakRank,
-  fetchCurrentRank,
   fetchCurrentRankWithCountry,
 } from "../repositories/history";
 import { fetchPoolById, fetchPoolMaps } from "../repositories/tourney";
@@ -84,23 +83,6 @@ function statAsDict(s: Record<string, unknown>): Record<string, unknown> {
     a_count: s.a_count,
     xp: s.xp,
   };
-}
-
-function redisLeaderboardMode(mode: number): number {
-  return mode === 7 ? 8 : mode;
-}
-
-function assignRankTier(rank: number, totalPlayers: number): string {
-  if (totalPlayers === 0) return "D";
-  const pct = rank / totalPlayers;
-
-  if (pct <= 0.001) return "X+";
-  if (pct <= 0.01) return "X";
-  if (pct <= 0.05) return "S";
-  if (pct <= 0.1) return "A";
-  if (pct <= 0.25) return "B";
-  if (pct <= 0.5) return "C";
-  return "D";
 }
 
 export async function v1Router(app: FastifyInstance) {
@@ -171,13 +153,12 @@ export async function v1Router(app: FastifyInstance) {
 
       const statsWithRank = await Promise.all(
         stats.map(async (s) => {
-          const redisMode = redisLeaderboardMode(s.mode);
           const globalRank = await redis.zrevrank(
-            `bancho:leaderboard:${redisMode}`,
+            `bancho:leaderboard:${s.mode}`,
             String(user!.id)
           );
           const countryRank = await redis.zrevrank(
-            `bancho:leaderboard:${redisMode}:${user!.country.toLowerCase()}`,
+            `bancho:leaderboard:${s.mode}:${user!.country.toLowerCase()}`,
             String(user!.id)
           );
 
@@ -509,10 +490,9 @@ export async function v1Router(app: FastifyInstance) {
     }
 
     const redis = getRedis();
-    const redisMode = redisLeaderboardMode(mode);
     const lbKey = country
-      ? `bancho:leaderboard:${redisMode}:${country.toLowerCase()}`
-      : `bancho:leaderboard:${redisMode}`;
+      ? `bancho:leaderboard:${mode}:${country.toLowerCase()}`
+      : `bancho:leaderboard:${mode}`;
 
     const totalPlayers = await redis.zcard(lbKey);
     const userIds = await redis.zrevrange(lbKey, offset, offset + limit - 1);
@@ -530,7 +510,6 @@ export async function v1Router(app: FastifyInstance) {
         const modeStat = stats.find((s) => s.mode === mode);
 
         const rank = offset + idx + 1;
-        const tier = assignRankTier(rank, totalPlayers);
 
         return {
           player: {
@@ -544,7 +523,6 @@ export async function v1Router(app: FastifyInstance) {
             ? statAsDict(modeStat as unknown as Record<string, unknown>)
             : null,
           rank,
-          tier,
         };
       })
     );

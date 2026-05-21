@@ -79,24 +79,6 @@ export async function fetchPeakRank(
   );
 }
 
-export async function fetchCurrentRank(
-  userId: number,
-  mode: number
-): Promise<{ user_id: number; mode: number; captured_at: Date; rank: number } | null> {
-  const redis = getRedis();
-  const rank = await redis.zrevrank(
-    `bancho:leaderboard:${mode}`,
-    String(userId)
-  );
-  if (rank === null) return null;
-  return {
-    user_id: userId,
-    mode,
-    captured_at: new Date(),
-    rank: rank + 1,
-  };
-}
-
 export async function fetchCurrentRankWithCountry(
   userId: number,
   mode: number,
