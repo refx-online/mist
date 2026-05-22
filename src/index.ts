@@ -3,7 +3,15 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { v1Router } from "./routes/v1";
 
-const app = Fastify({ logger: true });
+const isDev = process.env.NODE_ENV !== "production";
+
+const app = Fastify({
+  logger: {
+    transport: isDev
+      ? { target: "pino-pretty", options: { colorize: true, translateTime: "HH:MM:ss", ignore: "pid,hostname" } }
+      : undefined,
+  },
+});
 
 app.register(cors, { origin: true });
 app.register(v1Router, { prefix: "/v1" });
