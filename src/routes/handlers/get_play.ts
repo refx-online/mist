@@ -4,6 +4,7 @@ import path from "path";
 import { fetchScoreById } from "../../repositories/scores";
 import { REPLAYS_PATH } from "../utils";
 
+/// DEPRECATED
 export function registerGetPlay(app: FastifyInstance) {
   app.get("/get_play", async (req, reply) => {
     const { id, include_headers } = req.query as { id?: string; include_headers?: string };
