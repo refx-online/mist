@@ -1,12 +1,12 @@
 export enum GameMode {
-  REFX_OSU = 0,
-  REFX_TAIKO = 1,
-  REFX_CATCH = 2,
-  REFX_MANIA = 3,
-  SHAYMI_OSU = 4,
-  SHAYMI_TAIKO = 5,
-  SHAYMI_CATCH = 6,
-  SHAYMI_MANIA = 7,
+  VANILLA_OSU = 0,
+  VANILLA_TAIKO = 1,
+  VANILLA_CATCH = 2,
+  VANILLA_MANIA = 3,
+  RELAX_OSU = 4,
+  RELAX_TAIKO = 5,
+  RELAX_CATCH = 6,
+  RELAX_MANIA = 7,
   AUTOPILOT_OSU = 8,
   AUTOPILOT_TAIKO = 9,
   AUTOPILOT_CATCH = 10,
@@ -23,18 +23,25 @@ export enum GameMode {
 }
 
 export const INVALID_MODES = new Set([
+  GameMode.RELAX_MANIA,
   GameMode.AUTOPILOT_CATCH,
   GameMode.AUTOPILOT_TAIKO,
   GameMode.AUTOPILOT_MANIA,
+  GameMode.CHEAT_TAIKO,
+  GameMode.CHEAT_CATCH,
+  GameMode.CHEAT_MANIA,
+  GameMode.CHEAT_CHEAT_TAIKO,
+  GameMode.CHEAT_CHEAT_CATCH,
+  GameMode.CHEAT_CHEAT_MANIA,
 ]);
 
 export const VALID_SCORE_MODES = [
-  GameMode.REFX_OSU,
-  GameMode.REFX_TAIKO,
-  GameMode.REFX_CATCH,
-  GameMode.REFX_MANIA,
-  GameMode.SHAYMI_OSU,
-  GameMode.SHAYMI_TAIKO,
-  GameMode.SHAYMI_CATCH,
+  GameMode.VANILLA_OSU,
+  GameMode.VANILLA_TAIKO,
+  GameMode.VANILLA_CATCH,
+  GameMode.VANILLA_MANIA,
+  GameMode.RELAX_OSU,
+  GameMode.RELAX_TAIKO,
+  GameMode.RELAX_CATCH,
   GameMode.AUTOPILOT_OSU,
 ];
