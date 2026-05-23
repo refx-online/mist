@@ -46,15 +46,18 @@ export function registerGetPlayerScores(app: FastifyInstance) {
 
     let orderBy: string;
     let statusClause: string;
+    let mapStatusClause: string = "";
 
     switch (scope) {
       case "best":
         orderBy = "s.pp DESC";
-        statusClause = includeLoved ? "s.status IN (2, 5)" : "s.status = 2";
+        statusClause = "s.status = 2";
+        mapStatusClause = includeLoved ? "AND m.status IN (2, 3, 5)" : "AND m.status IN (2, 3)";
         break;
       case "first":
         orderBy = "s.play_time ASC";
-        statusClause = includeLoved ? "s.status IN (2, 5)" : "s.status = 2";
+        statusClause = "s.status = 2";
+        mapStatusClause = "AND m.status IN (2, 3, 5)";
         break;
       case "pinned":
         orderBy = "s.pp DESC";
@@ -86,8 +89,9 @@ export function registerGetPlayerScores(app: FastifyInstance) {
               s.userid, s.perfect, s.pinned, s.clock_rate,
               l.mods_json
        FROM scores s
+       INNER JOIN maps m ON m.md5 = s.map_md5
        LEFT JOIN lazer_scores l ON l.score_id = s.id
-       WHERE s.userid = ? AND s.mode = ? AND ${statusClause} ${modsClause}
+       WHERE s.userid = ? AND s.mode = ? AND ${statusClause} ${mapStatusClause} ${modsClause}
        ORDER BY ${orderBy}
        LIMIT ${limit}`,
       params
