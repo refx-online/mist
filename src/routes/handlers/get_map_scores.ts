@@ -53,7 +53,7 @@ export function registerGetMapScores(app: FastifyInstance) {
       `SELECT s.map_md5, s.id, s.score, s.pp, s.acc, s.max_combo,
               s.mods, s.n300, s.n100, s.n50, s.nmiss, s.ngeki, s.nkatu,
               s.grade, s.status, s.mode, s.play_time, s.time_elapsed,
-              s.userid, s.perfect, s.clock_rate,
+              s.userid, s.perfect, s.clock_rate, s.aim_value, s.ar_value, s.twval, s.hdr, s.cs,
               u.name AS player_name, u.country AS player_country,
               c.id AS clan_id, c.name AS clan_name, c.tag AS clan_tag,
               l.mods_json
@@ -72,7 +72,11 @@ export function registerGetMapScores(app: FastifyInstance) {
     return reply.send({
       status: "success",
       scores: scores.map((s) => {
-        const modsJson = s.mods_json ? JSON.parse(s.mods_json as string) : null;
+        const modsJson = s.mods_json
+          ? typeof s.mods_json === "string"
+            ? JSON.parse(s.mods_json)
+            : s.mods_json
+          : null;
         const result: Record<string, unknown> = { ...s };
         delete result.mods_json;
         if (modsJson) {

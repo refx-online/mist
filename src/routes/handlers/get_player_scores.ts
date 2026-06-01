@@ -86,7 +86,7 @@ export function registerGetPlayerScores(app: FastifyInstance) {
       `SELECT s.id, s.map_md5, s.score, s.xp_gained, s.pp, s.acc, s.max_combo,
               s.mods, s.n300, s.n100, s.n50, s.nmiss, s.ngeki, s.nkatu,
               s.grade, s.status, s.mode, s.play_time, s.time_elapsed,
-              s.userid, s.perfect, s.pinned, s.clock_rate,
+              s.userid, s.perfect, s.pinned, s.clock_rate, s.aim_value, s.ar_value, s.twval, s.hdr, s.cs,
               l.mods_json
        FROM scores s
        INNER JOIN maps m ON m.md5 = s.map_md5
@@ -107,7 +107,11 @@ export function registerGetPlayerScores(app: FastifyInstance) {
       status: "success",
       scores: await Promise.all(
         scores.map(async (s) => {
-          const modsJson = s.mods_json ? JSON.parse(s.mods_json as string) : null;
+          const modsJson = s.mods_json
+            ? typeof s.mods_json === "string"
+              ? JSON.parse(s.mods_json)
+              : s.mods_json
+            : null;
           const bmap = await fetchBeatmapByMd5(s.map_md5 as string);
           const result: Record<string, unknown> = {
             id: s.id,
@@ -131,6 +135,11 @@ export function registerGetPlayerScores(app: FastifyInstance) {
             xp_gained: r3(s.xp_gained),
             pinned: s.pinned,
             clock_rate: s.clock_rate,
+            aim_value: s.aim_value,
+            ar_value: s.ar_value,
+            twval: s.twval,
+            hdr: s.hdr,
+            cs: s.cs,
           };
           if (modsJson) {
             result.mods_json = modsJson;

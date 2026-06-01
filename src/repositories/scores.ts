@@ -32,7 +32,7 @@ export async function fetchScoreById(id: number): Promise<Score | null> {
   return fetchOne<Score>(
     `SELECT id, map_md5, score, xp_gained, pp, acc, max_combo, mods, n300, n100, n50,
             nmiss, ngeki, nkatu, grade, status, mode, play_time, time_elapsed,
-            client_flags, userid, perfect, online_checksum, pinned, clock_rate
+            client_flags, userid, perfect, online_checksum, pinned, clock_rate, aim_value, ar_value, twval, hdr, cs
      FROM scores WHERE id = ?`,
 
     [id]
