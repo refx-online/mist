@@ -5,7 +5,7 @@ import { modsToString } from "../../constants/mods";
 import { fetchUserById, fetchUserByName } from "../../repositories/users";
 import { fetchBeatmapByMd5, beatmapAsDict } from "../../repositories/maps";
 import { fetchClanById } from "../../repositories/clans";
-import { parseMods, r2, r3, fmtDatetime } from "../utils";
+import { parseMods, r2, r3, fmtDatetime, safeParseJson } from "../utils";
 
 export function registerGetPlayerScores(app: FastifyInstance) {
   app.get("/get_player_scores", async (req, reply) => {
@@ -107,11 +107,7 @@ export function registerGetPlayerScores(app: FastifyInstance) {
       status: "success",
       scores: await Promise.all(
         scores.map(async (s) => {
-          const modsJson = s.mods_json
-            ? typeof s.mods_json === "string"
-              ? JSON.parse(s.mods_json)
-              : s.mods_json
-            : null;
+          const modsJson = safeParseJson(s.mods_json);
           const bmap = await fetchBeatmapByMd5(s.map_md5 as string);
           const result: Record<string, unknown> = {
             id: s.id,
