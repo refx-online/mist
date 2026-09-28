@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { fetchOne } from "../../db";
 import { fetchScoreById } from "../../repositories/scores";
+import { safeParseJson } from "../utils";
 
 export function registerGetScoreInfo(app: FastifyInstance) {
   app.get("/get_score_info", async (req, reply) => {
@@ -20,7 +21,7 @@ export function registerGetScoreInfo(app: FastifyInstance) {
       [score.id]
     );
 
-    const modsJson = lzRow?.mods_json ? JSON.parse(lzRow.mods_json) : null;
+    const modsJson = safeParseJson(lzRow?.mods_json);
     const scoreResult: Record<string, unknown> = { ...score };
     if (modsJson) {
       scoreResult.mods_json = modsJson;

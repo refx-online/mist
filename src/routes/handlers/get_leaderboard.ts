@@ -20,6 +20,23 @@ export function registerGetLeaderboard(app: FastifyInstance) {
     const country = query.country;
     const sort = query.sort ?? "pp";
 
+    // NOTE: sort is interpolated into ORDER BY, so it must come from an
+    // allowlist — never raw user input (SQL injection).
+    const SORT_COLUMNS: Record<string, string> = {
+      pp: "s.pp",
+      acc: "s.acc",
+      plays: "s.plays",
+      tscore: "s.tscore",
+      rscore: "s.rscore",
+      playtime: "s.playtime",
+      xp: "s.xp",
+      max_combo: "s.max_combo",
+    };
+    const sortColumn = SORT_COLUMNS[sort];
+    if (!sortColumn) {
+      return reply.send({ status: "error", message: "Invalid sort." });
+    }
+
     if (INVALID_MODES.has(mode)) {
       return reply.send({ status: "error", message: "Invalid mode." });
     }
@@ -34,7 +51,7 @@ export function registerGetLeaderboard(app: FastifyInstance) {
        LEFT JOIN clans c ON c.id = u.clan_id
        WHERE s.mode = ? AND u.priv & ${Privileges.UNRESTRICTED} != 0 AND s.pp > 0
        ${country ? "AND u.country = ?" : ""}
-       ORDER BY s.${sort} DESC
+        ORDER BY ${sortColumn} DESC
        LIMIT ${offset}, ${limit}`,
       country ? [mode, country] : [mode]
     );

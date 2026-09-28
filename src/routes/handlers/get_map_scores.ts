@@ -3,7 +3,7 @@ import { fetchAll } from "../../db";
 import { Privileges } from "../../constants/privileges";
 import { modsToString } from "../../constants/mods";
 import { fetchBeatmapByMd5, fetchBeatmapById } from "../../repositories/maps";
-import { parseMods } from "../utils";
+import { parseMods, safeParseJson } from "../utils";
 
 export function registerGetMapScores(app: FastifyInstance) {
   app.get("/get_map_scores", async (req, reply) => {
@@ -72,11 +72,7 @@ export function registerGetMapScores(app: FastifyInstance) {
     return reply.send({
       status: "success",
       scores: scores.map((s) => {
-        const modsJson = s.mods_json
-          ? typeof s.mods_json === "string"
-            ? JSON.parse(s.mods_json)
-            : s.mods_json
-          : null;
+        const modsJson = safeParseJson(s.mods_json);
         const result: Record<string, unknown> = { ...s };
         delete result.mods_json;
         if (modsJson) {

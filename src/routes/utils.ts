@@ -22,6 +22,17 @@ export function parseMods(modsArg: string | undefined): { mods: number; equality
   return { mods, equality };
 }
 
+// NOTE: mods_json rows can be corrupt; a throwing parse here would 500 the
+// whole endpoint, so treat unparsable values as absent instead.
+export function safeParseJson(value: unknown): unknown | null {
+  if (!value || typeof value !== "string") return value ?? null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 export function userAsDict(u: User): Record<string, unknown> {
   return {
     id: u.id,
