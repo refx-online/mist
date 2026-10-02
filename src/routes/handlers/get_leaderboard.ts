@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { fetchAll } from "../../db";
-import { INVALID_MODES } from "../../constants/gamemodes";
+import { isInvalidMode } from "../../constants/gamemodes";
 import { Privileges } from "../../constants/privileges";
 import { r3 } from "../utils";
 
@@ -37,7 +37,7 @@ export function registerGetLeaderboard(app: FastifyInstance) {
       return reply.send({ status: "error", message: "Invalid sort." });
     }
 
-    if (INVALID_MODES.has(mode)) {
+    if (isInvalidMode(mode)) {
       return reply.send({ status: "error", message: "Invalid mode." });
     }
 

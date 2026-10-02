@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { fetchAll } from "../../db";
-import { INVALID_MODES } from "../../constants/gamemodes";
+import { isInvalidMode } from "../../constants/gamemodes";
 import { modsToString } from "../../constants/mods";
 import { fetchUserById, fetchUserByName } from "../../repositories/users";
 import { fetchBeatmapByMd5, beatmapAsDict } from "../../repositories/maps";
@@ -40,7 +40,7 @@ export function registerGetPlayerScores(app: FastifyInstance) {
     const includeFailed = query.include_failed === "true" || query.include_failed === "1";
     const { mods, equality } = parseMods(query.mods);
 
-    if (INVALID_MODES.has(mode)) {
+    if (isInvalidMode(mode)) {
       return reply.send({ status: "error", message: "Invalid mode." });
     }
 

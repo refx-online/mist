@@ -40,7 +40,7 @@ TypeScript rewrite of the v1 API from meat-my-beat-i (Python/FastAPI). Serves as
 
 ### Key Details
 
-- Redis leaderboard keys: `bancho:leaderboard:{mode}` and `bancho:leaderboard:{mode}:{country}`. Mode 7 (rx!mania) maps to redis key 8 for rank lookups in `get_player_info`.
+- Redis leaderboard keys: `bancho:leaderboard:{mode}` and `bancho:leaderboard:{mode}:{country}`. Modes are dense 0-15.
 - Scores join with `lazer_scores` table to get `mods_json`. When `mods_json` is present, omit `mods` integer and `mods_readable`; when absent, set `mods_json: null` and include `mods_readable`.
 - Mods can be parsed as integer or string (e.g. "HDDT"), with `=` prefix for strong equality and `~` for weak. Use `parseMods()` from `utils.ts`.
 - **`LIMIT ?` as a prepared statement parameter fails with mysql2** (`ER_WRONG_ARGUMENTS`). Always interpolate bounds-checked limit/offset values directly into the SQL string (e.g. `LIMIT ${limit}`).
